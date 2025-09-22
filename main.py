@@ -30,8 +30,8 @@ class TowerTetris(arcade.Window):
         self.score_text = None
         self.game_over_text = None
         self.blocks_placed = 0
-        self.spawn_interval = 2.0
-        self.time_since_spawn = 0.0
+        self.spawn_delay = 2.0
+        self.time_since_last_land = 0.0
         self.setup()
 
     def setup(self):
@@ -56,8 +56,8 @@ class TowerTetris(arcade.Window):
         right_shape.color = arcade.color.WHITE
         self.space.add(right_wall, right_shape)
 
-        self.time_since_spawn = 0.0
-        self.spawn_block()  # Initial spawn
+        self.time_since_last_land = 0.0
+        self.spawn_block()  # Initial immediate spawn
 
         self.score_text = Text(f"Score: {self.score}", 10, SCREEN_HEIGHT - 20, arcade.color.WHITE, 16)
         self.game_over_text = Text("Game Over! Press ESC to close.", SCREEN_WIDTH/2, SCREEN_HEIGHT/2,
@@ -82,7 +82,7 @@ class TowerTetris(arcade.Window):
         if self.falling_block:
             return
         self.falling_block = self.create_block((SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50))
-        self.falling_block[0].velocity = (0, 0)  # Ensure starts with no velocity
+        self.falling_block[0].velocity = (0, 0)  # Start with zero velocity for control
 
     def draw_pymunk(self):
         """Draw all Pymunk shapes"""
@@ -110,46 +110,49 @@ class TowerTetris(arcade.Window):
             self.keys_pressed.remove(key)
 
     def on_update(self, delta_time):
+        self.time_since_last_land += delta_time
+
+        # Spawn new block after delay since last land, if no current falling block
+        if self.time_since_last_land >= self.spawn_delay and not self.falling_block and not self.game_over:
+            self.spawn_block()
+            # Adjust delay every 10 blocks (after spawning, based on placed)
+            if self.blocks_placed % 10 == 0 and self.blocks_placed > 0:
+                self.spawn_delay = max(0.5, self.spawn_delay - 0.2)
+
+        # Apply input to falling block before physics
+        if self.falling_block and not self.game_over:
+            body = self.falling_block[0]
+            vx = 0
+            if arcade.key.LEFT in self.keys_pressed:
+                vx = -150
+            elif arcade.key.RIGHT in self.keys_pressed:
+                vx = 150
+            body.velocity = (vx, body.velocity.y)
+
+        # Step physics simulation
         if self.space:
             self.space.step(delta_time)
 
-        self.time_since_spawn += delta_time
-
-        # Timed spawning
-        if self.time_since_spawn >= self.spawn_interval and not self.falling_block and not self.game_over:
-            self.spawn_block()
-            self.time_since_spawn = 0.0
-            if self.blocks_placed % 10 == 0 and self.blocks_placed > 0:
-                self.spawn_interval = max(0.5, self.spawn_interval - 0.2)
-
-        if not self.game_over and self.falling_block:
+        # Check for landing after physics step
+        if self.falling_block and not self.game_over:
             body = self.falling_block[0]
-            if arcade.key.LEFT in self.keys_pressed:
-                body.velocity = (-150, body.velocity.y)
-            elif arcade.key.RIGHT in self.keys_pressed:
-                body.velocity = (150, body.velocity.y)
-            else:
-                body.velocity = (0, body.velocity.y)
-
-            # Check if landed
-            if abs(body.velocity.y) < 10:
+            if abs(body.velocity.y) < 10:  # Considered landed
                 shape_index = self.falling_block[1].user_data['index']
                 base_score = 10
                 if abs(body.position.x - SCREEN_WIDTH / 2) < 30:
-                    base_score += 20  # Alignment bonus
+                    base_score += 20  # Centered bonus
                 if shape_index == self.last_shape_index and self.last_shape_index != -1:
                     self.combo_multiplier += 0.5
                 else:
-                    self.combo_multiplier = 1
+                    self.combo_multiplier = 1.0
                 self.score += int(base_score * self.combo_multiplier)
                 self.last_shape_index = shape_index
                 self.blocks_placed += 1
                 self.falling_block = None
-                self.time_since_spawn = 0.0  # Reset timer after landing for next spawn
-                self.score_text.text = f"Score: {self.score}"  # Update text
-                # No immediate spawn here
+                self.time_since_last_land = 0.0  # Reset timer for next spawn delay
+                self.score_text.text = f"Score: {self.score}"
 
-        # Check for game over
+        # Game over check
         if not self.game_over:
             for shape in self.space.shapes:
                 if isinstance(shape, pymunk.Poly) and shape.body.body_type != pymunk.Body.STATIC and shape.body.position.y < -50:
