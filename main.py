@@ -1,5 +1,6 @@
 import arcade
 import pymunk
+from pymunk.autogeometry import convex_decomposition
 import math
 import random
 from arcade import Text
@@ -15,17 +16,17 @@ class TowerTetris(arcade.Window):
         self.space = None
         self.block_shapes = [
             # Rectangle
-            [(-20, -10), (20, -10), (20, 10), (-20, 10)],
+            [(-20, -10), (20, -10), (20, 10), (-20, 10), (-20, -10)],
             # L-shape
-            [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 20), (-20, 20)],
+            [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 20), (-20, 20), (-20, -20)],
             # Penthouse-like
-            [(-15, -15), (15, -15), (15, 15), (-15, 15), (-10, 10), (10, 10), (10, 20), (-10, 20)],
+            [(-15, -15), (15, -15), (15, 15), (-15, 15), (-10, 10), (10, 10), (10, 20), (-10, 20), (-15, -15)],
             # 
-            [(-20, -10), (0, -10), (0, 10), (20, 10), (20, 20), (-20, 20)], #
-            [(-15, -15), (15, -15), (15, 15), (-15, 15), (-5, 5), (5, 5), (5, 15), (-5, 15)],
-            [(-25, -10), (25, -10), (25, 10), (0, 10), (0, 20), (-25, 20)],
-            [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 10), (-20, 10)],
-            [(-20, -20), (20, -20), (20, 0), (10, 0), (10, 20), (-20, 20)],
+            [(-20, -10), (0, -10), (0, 10), (20, 10), (20, 20), (-20, 20), (-20, -10)], #
+            [(-15, -15), (15, -15), (15, 15), (-15, 15), (-5, 5), (5, 5), (5, 15), (-5, 15), (-15, -15)],
+            [(-25, -10), (25, -10), (25, 10), (0, 10), (0, 20), (-25, 20), (-25, -10)],
+            [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 10), (-20, 10), (-20, -20)],
+            [(-20, -20), (20, -20), (20, 0), (10, 0), (10, 20), (-20, 20), (-20, -20)],
 
         ]
         self.falling_block = None
@@ -74,17 +75,20 @@ class TowerTetris(arcade.Window):
     def create_block(self, position):
         shape_index = random.choice(range(len(self.block_shapes)))
         verts = self.block_shapes[shape_index]
+        convex_shapes_verts = convex_decomposition(verts, 0)
         body = pymunk.Body()
         body.position = position
-        shape = pymunk.Poly(body, verts)
-        shape.mass = 1
+        self.space.add(body)
         r = min(100 + shape_index * 50, 255)
         g = min(int(150 + shape_index ** 1.5), 255)
         b = min(255 - shape_index * 30, 255)
-        shape.color = (r, g, b, 255)
-        shape.user_data = {'index': shape_index}
-        shape.friction = 0.8  # Add friction to help blocks stay in place
-        self.space.add(body, shape)
+        for verts in convex_shapes_verts:
+            shape = pymunk.Poly(body, verts)
+            shape.mass = 1
+            shape.color = (r, g, b, 255)
+            shape.user_data = {'index': shape_index}
+            shape.friction = 0.8  # Add friction to help blocks stay in place
+            self.space.add(shape)
         return body, shape
 
     def spawn_block(self):
@@ -173,9 +177,10 @@ class TowerTetris(arcade.Window):
                     self.on_landing(body)
 
             # Game over check
-            for dynamic_shape in self.dynamic_shapes[1:]:
+            for dynamic_body in self.dynamic_bodies[1:]:
                 # Convert to world coordinates
-                world_verts = [(v.rotated(dynamic_shape.body.angle) + dynamic_shape.body.position) for v in dynamic_shape.get_vertices()]
+                verts = [shape.get_vertices() for shape in dynamic_body.shapes if isinstance(shape, pymunk.Poly)][0]
+                world_verts = [(v.rotated(dynamic_body.angle) + dynamic_body.position) for v in verts]
                 # Bottom y-coordinate
                 bottom_y = min(v.y for v in world_verts)
                 if bottom_y < 20:
@@ -228,8 +233,8 @@ class TowerTetris(arcade.Window):
 
 
     @property
-    def dynamic_shapes(self):
-        return [shape for shape in self.space.shapes if isinstance(shape, pymunk.Poly) and shape.body.body_type != pymunk.Body.STATIC]
+    def dynamic_bodies(self):
+        return [body for body in self.space.bodies if isinstance(body, pymunk.Body) and body.body_type != pymunk.Body.STATIC]
 
 if __name__ == "__main__":
     window = TowerTetris()
