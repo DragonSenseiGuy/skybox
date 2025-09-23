@@ -206,6 +206,31 @@ class TowerTetris(arcade.Window):
         self.time_since_last_land = 0.0  # Reset timer for next spawn delay
         self.score_text.text = f"Score: {self.score}"
 
+    
+    def fix_body(self, dynamic_body : pymunk.Body):
+        """Convert a dynamic body to static, preserving its shape and position.
+        
+        this function is useless now since I found out we can just add friction on shapes
+        """
+
+        shape = list(dynamic_body.shapes)[0]
+        self.space.shapes.remove(shape)
+        self.space.remove(dynamic_body)
+
+        static_body = pymunk.Body(body_type=pymunk.Body.STATIC)
+        static_body.position = dynamic_body.position
+
+        static_shape = pymunk.Poly(static_body, shape.get_vertices())
+        static_shape.mass = 1
+        static_shape.color = shape.color
+        static_shape.user_data = shape.user_data
+        self.space.add(static_body, static_shape)
+
+
+    @property
+    def dynamic_shapes(self):
+        return [shape for shape in self.space.shapes if isinstance(shape, pymunk.Poly) and shape.body.body_type != pymunk.Body.STATIC]
+
 if __name__ == "__main__":
     window = TowerTetris()
     arcade.run()
