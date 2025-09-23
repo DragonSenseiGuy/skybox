@@ -4,13 +4,13 @@ import math
 import random
 from arcade import Text
 
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
-SCREEN_TITLE = "Tower Tetris"
 
 class TowerTetris(arcade.Window):
+    SCREEN_WIDTH = 800
+    SCREEN_HEIGHT = 600
+    SCREEN_TITLE = "Tower Tetris"
     def __init__(self):
-        super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+        super().__init__(self.SCREEN_WIDTH, self.SCREEN_HEIGHT, self.SCREEN_TITLE)
         arcade.set_background_color(arcade.color.AMAZON)
         self.space = None
         self.block_shapes = [
@@ -24,7 +24,7 @@ class TowerTetris(arcade.Window):
         self.falling_block = None
         self.keys_pressed = set()
         self.score = 0
-        self.last_shape_index = -1
+        self.last_shape_index = None
         self.combo_multiplier = 1
         self.game_over = False
         self.score_text = None
@@ -41,26 +41,26 @@ class TowerTetris(arcade.Window):
         # Ground
         wall_thickness = 20
         ground_body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        ground_shape = pymunk.Segment(ground_body, (wall_thickness, 0), (SCREEN_WIDTH - wall_thickness, 0), wall_thickness)
+        ground_shape = pymunk.Segment(ground_body, (wall_thickness, 0), (self.SCREEN_WIDTH - wall_thickness, 0), wall_thickness)
         ground_shape.color = arcade.color.WHITE
         self.space.add(ground_body, ground_shape)
 
         # Side walls
         left_wall = pymunk.Body(body_type=pymunk.Body.STATIC)
-        left_shape = pymunk.Segment(left_wall, (0, 0), (0, SCREEN_HEIGHT + 100), wall_thickness)
+        left_shape = pymunk.Segment(left_wall, (0, 0), (0, self.SCREEN_HEIGHT + 100), wall_thickness)
         left_shape.color = arcade.color.WHITE
         self.space.add(left_wall, left_shape)
 
         right_wall = pymunk.Body(body_type=pymunk.Body.STATIC)
-        right_shape = pymunk.Segment(right_wall, (SCREEN_WIDTH, 0), (SCREEN_WIDTH, SCREEN_HEIGHT + 100), wall_thickness)
+        right_shape = pymunk.Segment(right_wall, (self.SCREEN_WIDTH, 0), (self.SCREEN_WIDTH, self.SCREEN_HEIGHT + 100), wall_thickness)
         right_shape.color = arcade.color.WHITE
         self.space.add(right_wall, right_shape)
 
         self.time_since_last_land = 0.0
         self.spawn_block()  # Initial immediate spawn
 
-        self.score_text = Text(f"Score: {self.score}", 10, SCREEN_HEIGHT - 20, arcade.color.WHITE, 16)
-        self.game_over_text = Text("Game Over! Press ESC to close.", SCREEN_WIDTH/2, SCREEN_HEIGHT/2,
+        self.score_text = Text(f"Score: {self.score}", 10, self.SCREEN_HEIGHT - 20, arcade.color.WHITE, 16)
+        self.game_over_text = Text("Game Over! Press ESC to close.", self.SCREEN_WIDTH/2, self.SCREEN_HEIGHT/2,
                                    arcade.color.RED, 30, anchor_x="center")
 
     def create_block(self, position):
@@ -81,7 +81,7 @@ class TowerTetris(arcade.Window):
     def spawn_block(self):
         if self.falling_block:
             return
-        self.falling_block = self.create_block((SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50))
+        self.falling_block = self.create_block((self.SCREEN_WIDTH // 2, self.SCREEN_HEIGHT - 50))
         self.falling_block[0].velocity = (0, 0)  # Start with zero velocity for control
 
     def draw_pymunk(self):
@@ -139,52 +139,60 @@ class TowerTetris(arcade.Window):
                 self.on_key_hold(key)
             self.time_since_last_land += delta_time
 
-        # Apply input to falling block before physics
-        if self.falling_block and not self.game_over:
-            body = self.falling_block[0]
-            vx = 0
-            if arcade.key.LEFT in self.keys_pressed:
-                vx = -150
-            elif arcade.key.RIGHT in self.keys_pressed:
-                vx = 150
-            body.velocity = (vx, body.velocity.y)
+            # Apply input to falling block before physics
+            #if self.falling_block:
+            #    body = self.falling_block[0]
+            #    vx = 0
+            #    if arcade.key.LEFT in self.keys_pressed:
+            #        vx = -150
+            #    elif arcade.key.RIGHT in self.keys_pressed:
+            #        vx = 150
+            #    body.velocity = (vx, body.velocity.y)
 
-        # Step physics simulation
-        if self.space:
-            self.space.step(delta_time)
+            # Step physics simulation
+            if self.space:
+                self.space.step(delta_time)
 
-        # Check for landing after physics step
-        if self.falling_block and not self.game_over:
-            body = self.falling_block[0]
-            if abs(body.velocity.y) < 10:  # Considered landed
-                shape_index = self.falling_block[1].user_data['index']
-                base_score = 10
-                if abs(body.position.x - SCREEN_WIDTH / 2) < 30:
-                    base_score += 20  # Centered bonus
-                if shape_index == self.last_shape_index and self.last_shape_index != -1:
-                    self.combo_multiplier += 0.5
-                else:
-                    self.combo_multiplier = 1.0
-                self.score += int(base_score * self.combo_multiplier)
-                self.last_shape_index = shape_index
-                self.blocks_placed += 1
-                self.falling_block = None
-                self.time_since_last_land = 0.0  # Reset timer for next spawn delay
-                self.score_text.text = f"Score: {self.score}"
+            # Check for landing after physics step
+            if self.falling_block:
+                body = self.falling_block[0]
+                if abs(body.velocity.y) < 3:  # Considered landed
+                    self.on_landing(body)
 
-        # Game over check
-        if not self.game_over:
-            for shape in self.space.shapes:
-                if isinstance(shape, pymunk.Poly) and shape.body.body_type != pymunk.Body.STATIC and shape.body.position.y < -50:
+            # Game over check
+            dynamic_shapes = [shape for shape in self.space.shapes if isinstance(shape, pymunk.Poly) and shape.body.body_type != pymunk.Body.STATIC]
+            for dynamic_shape in dynamic_shapes[1:]:
+                # Convert to world coordinates
+                world_verts = [(v.rotated(dynamic_shape.body.angle) + dynamic_shape.body.position) for v in dynamic_shape.get_vertices()]
+                # Bottom y-coordinate
+                bottom_y = min(v.y for v in world_verts)
+                if bottom_y < 20:
                     self.game_over = True
                     break
 
     def on_draw(self):
         self.clear()  # Replace start_render
-        self.draw_pymunk()
-        self.score_text.draw()
-        if self.game_over:
+        if not self.game_over:
+            self.draw_pymunk()
+            self.score_text.draw()
+        else:
             self.game_over_text.draw()
+    
+    def on_landing(self, landed_body : pymunk.Body):
+        shape_index = self.falling_block[1].user_data['index']
+        base_score = 10
+        if abs(landed_body.position.x - self.SCREEN_WIDTH / 2) < 30:
+            base_score += 20  # Centered bonus
+        if shape_index == self.last_shape_index and self.last_shape_index != None:
+            self.combo_multiplier += 0.5
+        else:
+            self.combo_multiplier = 1.0
+        self.score += int(base_score * self.combo_multiplier)
+        self.last_shape_index = shape_index
+        self.blocks_placed += 1
+        self.falling_block = None
+        self.time_since_last_land = 0.0  # Reset timer for next spawn delay
+        self.score_text.text = f"Score: {self.score}"
 
 if __name__ == "__main__":
     window = TowerTetris()
