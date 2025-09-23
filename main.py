@@ -19,7 +19,14 @@ class TowerTetris(arcade.Window):
             # L-shape
             [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 20), (-20, 20)],
             # Penthouse-like
-            [(-15, -15), (15, -15), (15, 15), (-15, 15), (-10, 10), (10, 10), (10, 20), (-10, 20)]
+            [(-15, -15), (15, -15), (15, 15), (-15, 15), (-10, 10), (10, 10), (10, 20), (-10, 20)],
+            # 
+            [(-20, -10), (0, -10), (0, 10), (20, 10), (20, 20), (-20, 20)], #
+            [(-15, -15), (15, -15), (15, 15), (-15, 15), (-5, 5), (5, 5), (5, 15), (-5, 15)],
+            [(-25, -10), (25, -10), (25, 10), (0, 10), (0, 20), (-25, 20)],
+            [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 10), (-20, 10)],
+            [(-20, -20), (20, -20), (20, 0), (10, 0), (10, 20), (-20, 20)],
+
         ]
         self.falling_block = None
         self.keys_pressed = set()
@@ -43,6 +50,7 @@ class TowerTetris(arcade.Window):
         ground_body = pymunk.Body(body_type=pymunk.Body.STATIC)
         ground_shape = pymunk.Segment(ground_body, (wall_thickness, 0), (self.SCREEN_WIDTH - wall_thickness, 0), wall_thickness)
         ground_shape.color = arcade.color.WHITE
+        ground_shape.friction = 1.0  # High friction for ground
         self.space.add(ground_body, ground_shape)
 
         # Side walls
@@ -70,11 +78,12 @@ class TowerTetris(arcade.Window):
         body.position = position
         shape = pymunk.Poly(body, verts)
         shape.mass = 1
-        r = 100 + shape_index * 50
-        g = 150
-        b = 255 - shape_index * 30
+        r = min(100 + shape_index * 50, 255)
+        g = min(int(150 + shape_index ** 1.5), 255)
+        b = min(255 - shape_index * 30, 255)
         shape.color = (r, g, b, 255)
         shape.user_data = {'index': shape_index}
+        shape.friction = 0.8  # Add friction to help blocks stay in place
         self.space.add(body, shape)
         return body, shape
 
@@ -156,12 +165,15 @@ class TowerTetris(arcade.Window):
             # Check for landing after physics step
             if self.falling_block:
                 body = self.falling_block[0]
-                if abs(body.velocity.y) < 3:  # Considered landed
+                velocity_x = abs(body.velocity.x)
+                velocity_x = max(0, velocity_x - 5)  # Friction effect
+                body.velocity = (math.copysign(velocity_x, body.velocity.x), body.velocity.y)
+                self.falling_block = (body, self.falling_block[1])
+                if abs(body.velocity.y) < 3 and abs(body.velocity.x) < 3:  # Considered landed
                     self.on_landing(body)
 
             # Game over check
-            dynamic_shapes = [shape for shape in self.space.shapes if isinstance(shape, pymunk.Poly) and shape.body.body_type != pymunk.Body.STATIC]
-            for dynamic_shape in dynamic_shapes[1:]:
+            for dynamic_shape in self.dynamic_shapes[1:]:
                 # Convert to world coordinates
                 world_verts = [(v.rotated(dynamic_shape.body.angle) + dynamic_shape.body.position) for v in dynamic_shape.get_vertices()]
                 # Bottom y-coordinate
