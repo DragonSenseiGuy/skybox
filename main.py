@@ -98,26 +98,46 @@ class TowerTetris(arcade.Window):
 
     def on_key_press(self, key, modifiers):
         self.keys_pressed.add(key)
-        if key == arcade.key.UP and self.falling_block:
-            body = self.falling_block[0]
-            body.angle += math.pi / 2  # Rotate 90 degrees
-        elif key == arcade.key.SPACE and self.falling_block:
-            body = self.falling_block[0]
-            body.velocity = (body.velocity.x, body.velocity.y - 300)  # Fast drop
+        if self.falling_block:
+            if key == arcade.key.UP:
+                body = self.falling_block[0]
+                body.angle += math.pi / 2  # Rotate 90 degrees
+    def on_key_hold(self, key):
+        if self.falling_block:
+            if key == arcade.key.RIGHT:
+                body = self.falling_block[0]
+                vx = min(200, body.velocity.x + 20) # adds velocity up to a certain point
+                body.velocity = (vx, body.velocity.y)
+                
+            elif key == arcade.key.LEFT:
+                body = self.falling_block[0]
+                vx = body.velocity.x
+                vx = max(-200, vx - 20) # adds velocity up to a certain point
+                body.velocity = (vx, body.velocity.y)
+            elif key == arcade.key.SPACE:
+                body = self.falling_block[0]
+                body.velocity = (0, max(-500, body.velocity.y - 100))  # Fast drop straight down
+                self.keys_pressed.discard(arcade.key.LEFT)
+                self.keys_pressed.discard(arcade.key.RIGHT)
 
     def on_key_release(self, key, modifiers):
         if key in self.keys_pressed:
             self.keys_pressed.remove(key)
 
     def on_update(self, delta_time):
-        self.time_since_last_land += delta_time
-
-        # Spawn new block after delay since last land, if no current falling block
-        if self.time_since_last_land >= self.spawn_delay and not self.falling_block and not self.game_over:
-            self.spawn_block()
-            # Adjust delay every 10 blocks (after spawning, based on placed)
-            if self.blocks_placed % 10 == 0 and self.blocks_placed > 0:
-                self.spawn_delay = max(0.5, self.spawn_delay - 0.2)
+        if not self.game_over:
+            # Spawn new block after delay since last land, if no current falling block
+            if self.time_since_last_land >= self.spawn_delay and not self.falling_block:
+                self.spawn_block()
+                # Adjust delay every 10 blocks (after spawning, based on placed)
+                if self.blocks_placed % 10 == 0 and self.blocks_placed > 0:
+                    self.spawn_delay = max(0.5, self.spawn_delay - 0.2)
+            #else:
+            #    print(f"Time since last land: {self.time_since_last_land:.2f}s, Spawn delay: {self.spawn_delay:.2f}s")
+            temp_keys = self.keys_pressed.copy()
+            for key in temp_keys:
+                self.on_key_hold(key)
+            self.time_since_last_land += delta_time
 
         # Apply input to falling block before physics
         if self.falling_block and not self.game_over:
