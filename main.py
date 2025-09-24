@@ -173,7 +173,7 @@ class TowerTetris(arcade.Window):
                 velocity_x = max(0, velocity_x - 5)  # Friction effect
                 body.velocity = (math.copysign(velocity_x, body.velocity.x), body.velocity.y)
                 self.falling_block = (body, self.falling_block[1])
-                if abs(body.velocity.y) < 3 and abs(body.velocity.x) < 3:  # Considered landed
+                if abs(body.velocity.y) < 3:  # Considered landed
                     self.on_landing(body)
 
             # Game over check
@@ -191,9 +191,9 @@ class TowerTetris(arcade.Window):
         self.clear()  # Replace start_render
         if not self.game_over:
             self.draw_pymunk()
-            self.score_text.draw()
         else:
             self.game_over_text.draw()
+        self.score_text.draw()
     
     def on_landing(self, landed_body : pymunk.Body):
         shape_index = self.falling_block[1].user_data['index']
