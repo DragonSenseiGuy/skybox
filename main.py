@@ -11,6 +11,7 @@ class TowerTetris(arcade.Window):
     SCREEN_WIDTH = 800
     SCREEN_HEIGHT = 600
     SCREEN_TITLE = "Tower Tetris"
+    BLOCK_SCALE = 1.8
     def __init__(self):
         super().__init__(self.SCREEN_WIDTH, self.SCREEN_HEIGHT, self.SCREEN_TITLE, resizable=True)
         arcade.set_background_color(arcade.color.AMAZON)
@@ -18,6 +19,8 @@ class TowerTetris(arcade.Window):
         bg_path = os.path.join(base_dir, "assets", "images", "city_pixel_bg.png")
         self.bg_texture = None
         self.bg_sprites = arcade.SpriteList()
+        self.COL_BLOCK = 1
+        self.COL_DEATH = 2
         self.bg_scale_mode = "cover"  # 'stretch' | 'cover' | 'contain'
         if not os.path.exists(bg_path):
             print(f"[background] File not found: {bg_path}")
@@ -54,12 +57,8 @@ class TowerTetris(arcade.Window):
             [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 20), (-20, 20), (-20, -20)],
             # Penthouse-like
             [(-15, -15), (15, -15), (15, 15), (-15, 15), (-10, 10), (10, 10), (10, 20), (-10, 20), (-15, -15)],
-            #
-            [(-20, -10), (0, -10), (0, 10), (20, 10), (20, 20), (-20, 20), (-20, -10)], #
-            [(-15, -15), (15, -15), (15, 15), (-15, 15), (-5, 5), (5, 5), (5, 15), (-5, 15), (-15, -15)],
-            [(-25, -10), (25, -10), (25, 10), (0, 10), (0, 20), (-25, 20), (-25, -10)],
-            [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 10), (-20, 10), (-20, -20)],
-            [(-20, -20), (20, -20), (20, 0), (10, 0), (10, 20), (-20, 20), (-20, -20)],
+            # T-shape
+            [(-10, -10), (10, -10), (0, 10), (-10, 10), (10, 10), (-10, -10)],
 
         ]
         self.falling_block = None
@@ -119,20 +118,32 @@ class TowerTetris(arcade.Window):
         wall_thickness = 20
         ground_body = pymunk.Body(body_type=pymunk.Body.STATIC)
         ground_shape = pymunk.Segment(ground_body, (wall_thickness, 0), (self.SCREEN_WIDTH - wall_thickness, 0), wall_thickness)
-        ground_shape.color = arcade.color.WHITE
         ground_shape.friction = 1.0  # High friction for ground
+        ground_shape.user_data = {'color': arcade.color.WHITE}
         self.space.add(ground_body, ground_shape)
 
         # Side walls
         left_wall = pymunk.Body(body_type=pymunk.Body.STATIC)
         left_shape = pymunk.Segment(left_wall, (0, 0), (0, self.SCREEN_HEIGHT + 100), wall_thickness)
-        left_shape.color = arcade.color.WHITE
+        left_shape.user_data = {'color': arcade.color.WHITE}
         self.space.add(left_wall, left_shape)
 
         right_wall = pymunk.Body(body_type=pymunk.Body.STATIC)
         right_shape = pymunk.Segment(right_wall, (self.SCREEN_WIDTH, 0), (self.SCREEN_WIDTH, self.SCREEN_HEIGHT + 100), wall_thickness)
-        right_shape.color = arcade.color.WHITE
+        right_shape.user_data = {'color': arcade.color.WHITE}
         self.space.add(right_wall, right_shape)
+
+        # Death sensor below the screen to detect falling blocks
+        death_body = pymunk.Body(body_type=pymunk.Body.STATIC)
+        death_shape = pymunk.Segment(death_body, (-1000, -150), (self.SCREEN_WIDTH + 1000, -150), 1)
+        death_shape.sensor = True
+        death_shape.collision_type = self.COL_DEATH
+        death_shape.user_data = {'sensor': True}
+        self.space.add(death_body, death_shape)
+
+        # Collision handler: block hits death sensor -> game over
+        handler = self.space.add_collision_handler(self.COL_BLOCK, self.COL_DEATH)
+        handler.begin = self._on_block_hits_death
 
         self.time_since_last_land = 0.0
         self.spawn_block()  # Initial immediate spawn
@@ -143,8 +154,10 @@ class TowerTetris(arcade.Window):
 
     def create_block(self, position):
         shape_index = random.choice(range(len(self.block_shapes)))
-        verts = self.block_shapes[shape_index]
-        convex_shapes_verts = convex_decomposition(verts, 0)
+        base_verts = self.block_shapes[shape_index]
+        scale = self.BLOCK_SCALE
+        scaled_verts = [(float(x) * scale, float(y) * scale) for (x, y) in base_verts]
+        convex_shapes_verts = convex_decomposition(scaled_verts, 0)
         body = pymunk.Body()
         body.position = position
         self.space.add(body)
@@ -153,10 +166,10 @@ class TowerTetris(arcade.Window):
         b = min(255 - shape_index * 30, 255)
         for verts in convex_shapes_verts:
             shape = pymunk.Poly(body, verts)
-            shape.mass = 1
-            shape.color = (r, g, b, 255)
-            shape.user_data = {'index': shape_index}
+            shape.density = self.BLOCK_SCALE ** 2
+            shape.user_data = {'index': shape_index, 'color': (r, g, b, 255)}
             shape.friction = 0.8  # Add friction to help blocks stay in place
+            shape.collision_type = self.COL_BLOCK
             self.space.add(shape)
         return body, shape
 
@@ -170,13 +183,18 @@ class TowerTetris(arcade.Window):
         """Draw all Pymunk shapes"""
         for shape in self.space.shapes:
             if isinstance(shape, pymunk.Segment):
-                arcade.draw_line(shape.a.x, shape.a.y, shape.b.x, shape.b.y, shape.color, 3)
+                # Skip invisible/sensor segments like the death line
+                if getattr(shape, "sensor", False) or (getattr(shape, "user_data", None) and shape.user_data.get("sensor")):
+                    continue
+                color = (shape.user_data.get('color') if getattr(shape, "user_data", None) else arcade.color.WHITE)
+                arcade.draw_line(shape.a.x, shape.a.y, shape.b.x, shape.b.y, color, 3)
             elif isinstance(shape, pymunk.Poly):
                 # Get local vertices
                 local_verts = shape.get_vertices()
                 # Transform to world
                 world_verts = [(v.rotated(shape.body.angle) + shape.body.position) for v in local_verts]
-                arcade.draw_polygon_filled([(v.x, v.y) for v in world_verts], shape.color)
+                color = (shape.user_data.get('color') if getattr(shape, "user_data", None) else arcade.color.WHITE)
+                arcade.draw_polygon_filled([(v.x, v.y) for v in world_verts], color)
 
     def on_key_press(self, key, modifiers):
         self.keys_pressed.add(key)
@@ -264,16 +282,12 @@ class TowerTetris(arcade.Window):
                 if abs(body.velocity.y) < 3:  # Considered landed
                     self.on_landing(body)
 
-            # Game over check
-            for dynamic_body in self.dynamic_bodies[1:]:
-                # Convert to world coordinates
-                verts = [shape.get_vertices() for shape in dynamic_body.shapes if isinstance(shape, pymunk.Poly)][0]
-                world_verts = [(v.rotated(dynamic_body.angle) + dynamic_body.position) for v in verts]
-                # Bottom y-coordinate
-                bottom_y = min(v.y for v in world_verts)
-                if bottom_y < 20:
-                    self.game_over = True
-                    break
+            # Game over handled by death sensor collision
+
+    def _on_block_hits_death(self, arbiter, space, data):
+        # Trigger game over when any block hits the death sensor
+        self.game_over = True
+        return True
 
     def on_draw(self):
         self.clear()  # Replace start_render
