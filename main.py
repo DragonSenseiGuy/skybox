@@ -12,12 +12,13 @@ class TowerTetris(arcade.Window):
     SCREEN_HEIGHT = 600
     SCREEN_TITLE = "Tower Tetris"
     def __init__(self):
-        super().__init__(self.SCREEN_WIDTH, self.SCREEN_HEIGHT, self.SCREEN_TITLE)
+        super().__init__(self.SCREEN_WIDTH, self.SCREEN_HEIGHT, self.SCREEN_TITLE, resizable=True)
         arcade.set_background_color(arcade.color.AMAZON)
         base_dir = os.path.dirname(__file__)
         bg_path = os.path.join(base_dir, "assets", "images", "city_pixel_bg.png")
         self.bg_texture = None
         self.bg_sprites = arcade.SpriteList()
+        self.bg_scale_mode = "cover"  # 'stretch' | 'cover' | 'contain'
         if not os.path.exists(bg_path):
             print(f"[background] File not found: {bg_path}")
         else:
@@ -29,9 +30,17 @@ class TowerTetris(arcade.Window):
                 bg_sprite.center_y = self.SCREEN_HEIGHT / 2
                 tex_w = bg_sprite.texture.width if bg_sprite.texture else self.SCREEN_WIDTH
                 tex_h = bg_sprite.texture.height if bg_sprite.texture else self.SCREEN_HEIGHT
-                scale_x = self.SCREEN_WIDTH / tex_w if tex_w else 1.0
-                scale_y = self.SCREEN_HEIGHT / tex_h if tex_h else 1.0
-                bg_sprite.scale = (scale_x, scale_y)
+                if self.bg_scale_mode == "stretch":
+                    bg_sprite.width = self.SCREEN_WIDTH
+                    bg_sprite.height = self.SCREEN_HEIGHT
+                elif self.bg_scale_mode == "cover":
+                    factor = max(self.SCREEN_WIDTH / tex_w, self.SCREEN_HEIGHT / tex_h) if tex_w and tex_h else 1.0
+                    bg_sprite.width = tex_w * factor
+                    bg_sprite.height = tex_h * factor
+                else:
+                    factor = min(self.SCREEN_WIDTH / tex_w, self.SCREEN_HEIGHT / tex_h) if tex_w and tex_h else 1.0
+                    bg_sprite.width = tex_w * factor
+                    bg_sprite.height = tex_h * factor
                 self.bg_sprites.append(bg_sprite)
                 print(f"[background] Loaded: {bg_path}")
             except Exception as e:
@@ -66,6 +75,41 @@ class TowerTetris(arcade.Window):
         self.time_since_last_land = 0.0
         self._bg_debug_printed = False
         self.setup()
+
+    def _update_background_scale(self, width: int, height: int):
+        # Recenter and scale background sprite to fill the window using the selected mode
+        if getattr(self, "bg_sprites", None) and len(self.bg_sprites) > 0:
+            bg = self.bg_sprites[0]
+            bg.center_x = width / 2
+            bg.center_y = height / 2
+            tex_w = bg.texture.width if bg.texture else width
+            tex_h = bg.texture.height if bg.texture else height
+            if self.bg_scale_mode == "stretch":
+                bg.width = width
+                bg.height = height
+            elif self.bg_scale_mode == "cover":
+                factor = max((width / tex_w) if tex_w else 1.0, (height / tex_h) if tex_h else 1.0)
+                bg.width = tex_w * factor
+                bg.height = tex_h * factor
+            else:  # contain
+                factor = min((width / tex_w) if tex_w else 1.0, (height / tex_h) if tex_h else 1.0)
+                bg.width = tex_w * factor
+                bg.height = tex_h * factor
+
+    def on_resize(self, width: int, height: int):
+        # Update window metrics
+        self.SCREEN_WIDTH = int(width)
+        self.SCREEN_HEIGHT = int(height)
+        # Move texts to correct positions
+        if self.score_text:
+            self.score_text.y = self.SCREEN_HEIGHT - 20
+        if self.game_over_text:
+            self.game_over_text.x = self.SCREEN_WIDTH / 2
+            self.game_over_text.y = self.SCREEN_HEIGHT / 2
+        # Update background
+        self._update_background_scale(self.SCREEN_WIDTH, self.SCREEN_HEIGHT)
+        # Let Arcade handle the rest
+        return super().on_resize(width, height)
 
     def setup(self):
         self.space = pymunk.Space()
@@ -136,6 +180,25 @@ class TowerTetris(arcade.Window):
 
     def on_key_press(self, key, modifiers):
         self.keys_pressed.add(key)
+
+        # Global shortcuts
+        if key == arcade.key.F:
+            # Toggle fullscreen and update background scale to new size
+            self.set_fullscreen(not self.fullscreen)
+            w, h = self.get_size()
+            self.on_resize(w, h)
+        elif key == arcade.key.S:
+            # Cycle background scale mode: stretch -> cover -> contain
+            modes = ("stretch", "cover", "contain")
+            try:
+                idx = modes.index(self.bg_scale_mode)
+            except ValueError:
+                idx = 0
+            self.bg_scale_mode = modes[(idx + 1) % len(modes)]
+            print(f"[background] scale mode: {self.bg_scale_mode}")
+            self._update_background_scale(self.SCREEN_WIDTH, self.SCREEN_HEIGHT)
+
+        # Gameplay controls
         if self.falling_block:
             if key == arcade.key.UP:
                 body = self.falling_block[0]
