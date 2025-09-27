@@ -4,6 +4,7 @@ from pymunk.autogeometry import convex_decomposition
 import math
 import random
 from arcade import Text
+import os
 
 
 class TowerTetris(arcade.Window):
@@ -13,6 +14,29 @@ class TowerTetris(arcade.Window):
     def __init__(self):
         super().__init__(self.SCREEN_WIDTH, self.SCREEN_HEIGHT, self.SCREEN_TITLE)
         arcade.set_background_color(arcade.color.AMAZON)
+        base_dir = os.path.dirname(__file__)
+        bg_path = os.path.join(base_dir, "assets", "images", "city_pixel_bg.png")
+        self.bg_texture = None
+        self.bg_sprites = arcade.SpriteList()
+        if not os.path.exists(bg_path):
+            print(f"[background] File not found: {bg_path}")
+        else:
+            try:
+                # Load texture so we can query original size for scaling
+                self.bg_texture = arcade.load_texture(bg_path)
+                bg_sprite = arcade.Sprite(bg_path)
+                bg_sprite.center_x = self.SCREEN_WIDTH / 2
+                bg_sprite.center_y = self.SCREEN_HEIGHT / 2
+                tex_w = bg_sprite.texture.width if bg_sprite.texture else self.SCREEN_WIDTH
+                tex_h = bg_sprite.texture.height if bg_sprite.texture else self.SCREEN_HEIGHT
+                scale_x = self.SCREEN_WIDTH / tex_w if tex_w else 1.0
+                scale_y = self.SCREEN_HEIGHT / tex_h if tex_h else 1.0
+                bg_sprite.scale = (scale_x, scale_y)
+                self.bg_sprites.append(bg_sprite)
+                print(f"[background] Loaded: {bg_path}")
+            except Exception as e:
+                print(f"[background] Failed to load {bg_path}: {e}")
+                self.bg_texture = None
         self.space = None
         self.block_shapes = [
             # Rectangle
@@ -21,7 +45,7 @@ class TowerTetris(arcade.Window):
             [(-20, -20), (20, -20), (20, 0), (0, 0), (0, 20), (-20, 20), (-20, -20)],
             # Penthouse-like
             [(-15, -15), (15, -15), (15, 15), (-15, 15), (-10, 10), (10, 10), (10, 20), (-10, 20), (-15, -15)],
-            # 
+            #
             [(-20, -10), (0, -10), (0, 10), (20, 10), (20, 20), (-20, 20), (-20, -10)], #
             [(-15, -15), (15, -15), (15, 15), (-15, 15), (-5, 5), (5, 5), (5, 15), (-5, 15), (-15, -15)],
             [(-25, -10), (25, -10), (25, 10), (0, 10), (0, 20), (-25, 20), (-25, -10)],
@@ -40,6 +64,7 @@ class TowerTetris(arcade.Window):
         self.blocks_placed = 0
         self.spawn_delay = 2.0
         self.time_since_last_land = 0.0
+        self._bg_debug_printed = False
         self.setup()
 
     def setup(self):
@@ -121,7 +146,7 @@ class TowerTetris(arcade.Window):
                 body = self.falling_block[0]
                 vx = min(200, body.velocity.x + 20) # adds velocity up to a certain point
                 body.velocity = (vx, body.velocity.y)
-                
+
             elif key == arcade.key.LEFT:
                 body = self.falling_block[0]
                 vx = body.velocity.x
@@ -189,12 +214,22 @@ class TowerTetris(arcade.Window):
 
     def on_draw(self):
         self.clear()  # Replace start_render
+        if getattr(self, "bg_sprites", None) and len(self.bg_sprites) > 0:
+            if not getattr(self, "_bg_debug_printed", True):
+                print(f"[background] drawing {len(self.bg_sprites)} sprite(s)")
+                self._bg_debug_printed = True
+            self.bg_sprites.draw()
+        else:
+            if not getattr(self, "_bg_debug_printed", True):
+                print("[background] no background sprites; drawing solid color")
+                self._bg_debug_printed = True
+            arcade.draw_lrbt_rectangle_filled(0, self.SCREEN_WIDTH, 0, self.SCREEN_HEIGHT, arcade.color.BLACK)
         if not self.game_over:
             self.draw_pymunk()
         else:
             self.game_over_text.draw()
         self.score_text.draw()
-    
+
     def on_landing(self, landed_body : pymunk.Body):
         shape_index = self.falling_block[1].user_data['index']
         base_score = 10
@@ -211,10 +246,10 @@ class TowerTetris(arcade.Window):
         self.time_since_last_land = 0.0  # Reset timer for next spawn delay
         self.score_text.text = f"Score: {self.score}"
 
-    
+
     def fix_body(self, dynamic_body : pymunk.Body):
         """Convert a dynamic body to static, preserving its shape and position.
-        
+
         this function is useless now since I found out we can just add friction on shapes
         """
 
