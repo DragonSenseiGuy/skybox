@@ -12,7 +12,7 @@ import pyfxr
 class TowerTetris(arcade.Window):
     SCREEN_WIDTH = 800
     SCREEN_HEIGHT = 600
-    SCREEN_TITLE = "Tower Tetris"
+    SCREEN_TITLE = ""
     BLOCK_SCALE = 1.8
     def __init__(self):
         super().__init__(self.SCREEN_WIDTH, self.SCREEN_HEIGHT, self.SCREEN_TITLE, resizable=True)
