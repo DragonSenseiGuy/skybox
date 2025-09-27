@@ -5,6 +5,8 @@ import math
 import random
 from arcade import Text
 import os
+import pyglet
+import pyfxr
 
 
 class TowerTetris(arcade.Window):
@@ -73,6 +75,8 @@ class TowerTetris(arcade.Window):
         self.spawn_delay = 2.0
         self.time_since_last_land = 0.0
         self._bg_debug_printed = False
+        self._init_audio()
+        self._active_collisions = set()
         self.setup()
 
     def _update_background_scale(self, width: int, height: int):
@@ -145,6 +149,13 @@ class TowerTetris(arcade.Window):
         handler = self.space.add_collision_handler(self.COL_BLOCK, self.COL_DEATH)
         handler.begin = self._on_block_hits_death
 
+        # Collision handler: blocks colliding with each other -> play hit sounds
+        hit_handler = self.space.add_collision_handler(self.COL_BLOCK, self.COL_BLOCK)
+        # Use post_solve so we can read the collision impulse and respond after physics
+        hit_handler.post_solve = self._on_blocks_collide
+        # Use separate to clear active collision flag so future collisions will play again
+        hit_handler.separate = self._on_blocks_separate
+
         self.time_since_last_land = 0.0
         self.spawn_block()  # Initial immediate spawn
 
@@ -178,6 +189,7 @@ class TowerTetris(arcade.Window):
             return
         self.falling_block = self.create_block((self.SCREEN_WIDTH // 2, self.SCREEN_HEIGHT - 50))
         self.falling_block[0].velocity = (0, 0)  # Start with zero velocity for control
+        self._play_sfx('spawn')
 
     def draw_pymunk(self):
         """Draw all Pymunk shapes"""
@@ -221,6 +233,7 @@ class TowerTetris(arcade.Window):
             if key == arcade.key.UP:
                 body = self.falling_block[0]
                 body.angle += math.pi / 2  # Rotate 90 degrees
+                self._play_sfx('rotate')
     def on_key_hold(self, key):
         if self.falling_block:
             if key == arcade.key.RIGHT:
@@ -286,8 +299,71 @@ class TowerTetris(arcade.Window):
 
     def _on_block_hits_death(self, arbiter, space, data):
         # Trigger game over when any block hits the death sensor
+        try:
+            self._play_sfx('game_over')
+        except Exception:
+            pass
         self.game_over = True
         return True
+
+    def _on_blocks_collide(self, arbiter, space, data):
+        # Called after two block shapes collide. Play the hit sound only once per contact.
+        try:
+            # Identify the two shapes involved and create a stable key for the pair
+            shapes = getattr(arbiter, "shapes", None)
+            if not shapes or len(shapes) < 2:
+                return True
+            key = tuple(sorted((id(shapes[0]), id(shapes[1]))))
+            # If we've already played a sound for this active contact, skip
+            if key in self._active_collisions:
+                return True
+            # Mark this contact as active so further post_solve calls for the same contact don't replay
+            self._active_collisions.add(key)
+
+            # Attempt to read collision impulse to set volume
+            impulse_vec = getattr(arbiter, "total_impulse", None)
+            if impulse_vec is None:
+                # No impulse available -> use a small default
+                impulse = 0.0
+            else:
+                # Try to get a length; fallback to converting to float
+                impulse = 0.0
+                try:
+                    impulse = float(getattr(impulse_vec, "length", impulse_vec))
+                except Exception:
+                    try:
+                        impulse = float(impulse_vec)
+                    except Exception:
+                        impulse = 0.0
+
+            # Map impulse to volume: choose a sensible scale factor and clamp
+            volume = max(0.05, min(1.0, impulse / 150.0))
+            snd = self.sfx.get('hit') if hasattr(self, "sfx") else None
+            if snd:
+                player = snd.play()
+                try:
+                    player.volume = volume
+                except Exception:
+                    # Some players may not support volume; ignore
+                    pass
+        except Exception as e:
+            print(f"[audio] collision play error: {e}")
+        # Return True to allow normal physics resolution to continue
+        return True
+
+    def _on_blocks_separate(self, arbiter, space, data):
+        # Called when two block shapes separate. Clear the active flag so future collisions between
+        # the same shapes will play sound again.
+        try:
+            shapes = getattr(arbiter, "shapes", None)
+            if not shapes or len(shapes) < 2:
+                return None
+            key = tuple(sorted((id(shapes[0]), id(shapes[1]))))
+            self._active_collisions.discard(key)
+        except Exception:
+            # Ignore errors here; separation cleanup is best-effort
+            pass
+        return None
 
     def on_draw(self):
         self.clear()  # Replace start_render
@@ -308,6 +384,7 @@ class TowerTetris(arcade.Window):
         self.score_text.draw()
 
     def on_landing(self, landed_body : pymunk.Body):
+        self._play_sfx('land')
         shape_index = self.falling_block[1].user_data['index']
         base_score = 10
         if abs(landed_body.position.x - self.SCREEN_WIDTH / 2) < 30:
@@ -347,6 +424,29 @@ class TowerTetris(arcade.Window):
     @property
     def dynamic_bodies(self):
         return [body for body in self.space.bodies if isinstance(body, pymunk.Body) and body.body_type != pymunk.Body.STATIC]
+
+    def _init_audio(self):
+        try:
+            self.sfx = {
+                'spawn': pyglet.media.StaticSource(pyfxr.explosion()),
+                'rotate': pyglet.media.StaticSource(pyfxr.explosion()),
+                'land': pyglet.media.StaticSource(pyfxr.explosion()),
+                'game_over': pyglet.media.StaticSource(pyfxr.explosion()),
+                # Hit sound for block-block collisions; small percussive pickup works well
+                'hit': pyglet.media.StaticSource(pyfxr.explosion()),
+            }
+            print("[audio] pyfxr sounds initialized")
+        except Exception as e:
+            print(f"[audio] init error: {e}")
+            self.sfx = {}
+
+    def _play_sfx(self, name: str):
+        try:
+            snd = self.sfx.get(name) if hasattr(self, "sfx") else None
+            if snd:
+                snd.play()
+        except Exception as e:
+            print(f"[audio] play error for {name}: {e}")
 
 if __name__ == "__main__":
     window = TowerTetris()
