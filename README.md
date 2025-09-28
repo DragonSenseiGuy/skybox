@@ -1,7 +1,3 @@
-# Tower Tetris (Skyscraper Edition)
-
-A physics-based puzzle/arcade game where you build a skyscraper by stacking falling floor blocks. Use physics to ensure stability and avoid collapse!
-
 ## Installation
 
 1. Ensure Python 3.8+ is installed.
@@ -36,58 +32,25 @@ A physics-based puzzle/arcade game where you build a skyscraper by stacking fall
    python main.py
    ```
 
-   Or directly with the venv executable:
-
-   ```
-   .venv/bin/python main.py
-   ```
-
-   (Adjust path for Windows: .venv\Scripts\python.exe main.py)
-
 3. Controls:
    - Left/Right Arrow Keys: Move block horizontally.
    - Up Arrow Key: Rotate block 90 degrees.
    - Spacebar: Fast drop.
-   - ESC: Close the game.
 
 4. Gameplay:
    - Stack blocks to build a tall, stable tower.
-   - Score points for placements, with bonuses for centering and shape combos.
-   - Game over if a block falls below the screen.
 
-## Packaging for Distribution
+#Contributions
+@dragonsensenseiguy(discord & github) - Wrote most of the physics and gameplay also bundled the project for submission
+@jujulien45(discord & github) - Fixed some major bugs
 
-To create a standalone executable (e.g., for Windows/Mac/Linux):
+#Artwork
+City Skyline Background from [OpenGameArt.org](https://opengameart.org/content/simple-seamless-city-pixel-art-background)
 
-1. Install PyInstaller:
+#LICENSE
+THis project is LICENSED under the MIT License
 
-   ```
-   pip install pyinstaller
-   ```
-
-2. Package the game:
-
-   ```
-   pyinstaller --onefile --windowed main.py
-   ```
-
-   - `--onefile`: Bundles everything into a single executable.
-   - `--windowed`: Hides the console window (suitable for games).
-
-3. The executable will be in the `dist/` folder. Test it on target platforms.
-
-Note: Packaging may require additional steps for platform-specific dependencies (e.g., SDL for Arcade). For cross-platform, consider using tools like Briefcase or building on each OS.
-
-## Development
-
-- Editor: Visual Studio Code recommended.
-- Physics: Powered by Pymunk for realistic stacking and wobbling.
-- Sounds: Retro effects via pyfxr.
-
-## Future Features
-
-- Difficulty progression (faster blocks, wind effects).
-- Procedural city skyline background.
-- High-score leaderboard.
-
-Enjoy building your skyscraper!
+#Dependencies
+- arcade
+- pymunk
+- pyfxr
