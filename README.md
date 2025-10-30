@@ -1,6 +1,6 @@
 ## Installation
 
-1. Ensure Python 3.8+ is installed.
+1. Ensure Python 3.9+ is installed.
 2. Clone or navigate to the project directory.
 3. Install dependencies:
 
